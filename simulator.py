@@ -10,6 +10,7 @@ Output files:
     SJF.txt
 '''
 import sys
+import heapq
 
 input_file = 'input.txt'
 
@@ -88,10 +89,92 @@ def RR_scheduling(process_list, time_quantum ):
     return schedule, average_waiting_time
 
 def SRTF_scheduling(process_list):
-    return (["to be completed, scheduling process_list on SRTF, using process.burst_time to calculate the remaining time of the current process "], 0.0)
+    schedule = []
+    current_time = 0
+    waiting_time = 0
+    preempted_process_heapq = [];
+    running_task = None;
+    process_list_len = len(process_list);
+
+    while (len(process_list) != 0 or len(preempted_process_heapq) != 0 or running_task != None):
+        if len(process_list) > 0:
+            processes = list(filter(lambda x: x.arrive_time <= current_time, process_list));
+            process_list = list(filter(lambda x: x.arrive_time > current_time, process_list));
+            for p in processes:
+                heapq.heappush(preempted_process_heapq, (p.burst_time, {"Process": p, "preempt_time": p.arrive_time}));  
+        if running_task== None and len(preempted_process_heapq) == 0:
+            current_time += 1;
+        elif running_task == None:
+            process = heapq.heappop(preempted_process_heapq)[1];
+            running_task = {"Process": process["Process"], "start_time": current_time};
+            schedule.append((current_time, process["Process"].id));
+            waiting_time += (current_time - process["preempt_time"]);
+        elif running_task["start_time"] + running_task["Process"].burst_time <= current_time:
+            running_task = None;
+        elif len(preempted_process_heapq) == 0:
+            current_time += 1;
+        else:
+            shortest_in_heapq = heapq.heappop(preempted_process_heapq)[1];
+            if shortest_in_heapq["Process"].burst_time < (running_task["Process"].burst_time + running_task["start_time"] - current_time ):
+                running_task["Process"].burst_time = running_task["Process"].burst_time - (current_time  - running_task["start_time"]);
+                heapq.heappush(preempted_process_heapq, (running_task["Process"].burst_time, {"Process": running_task["Process"], "preempt_time": current_time}));
+                running_task = {"Process": shortest_in_heapq["Process"], "start_time": current_time};
+                schedule.append((current_time, shortest_in_heapq["Process"].id));
+                waiting_time += (current_time - shortest_in_heapq["preempt_time"]);
+            else:
+                heapq.heappush(preempted_process_heapq, (shortest_in_heapq["Process"].burst_time, shortest_in_heapq));
+                current_time += 1;
+    average_waiting_time = waiting_time/float(process_list_len);
+    return schedule, average_waiting_time 
 
 def SJF_scheduling(process_list, alpha):
-    return (["to be completed, scheduling SJF without using information from process.burst_time"],0.0)
+    schedule = [];
+    current_time = 0;
+    waiting_time = 0;
+    #{id : (predict_time, [])}
+    history_record = dict();
+    history_record_count = 0;
+    process_list_len = len(process_list);
+
+    while len(process_list) != 0 or history_record_count != 0:
+        
+        if len(process_list) > 0:
+            processes = list(filter(lambda x: x.arrive_time <= current_time, process_list));
+            process_list = list(filter(lambda x: x.arrive_time > current_time, process_list));
+            for p in processes:
+                if str(p.id) in history_record.keys():
+                    history_record[str(p.id)][1].append(p);
+                else:
+                    temp = [];
+                    temp.append(p);
+                    history_record[str(p.id)] = [5, temp];
+                history_record_count += 1;
+
+        if history_record_count == 0:
+            current_time += 1;
+            continue;
+        else:
+            # for p in history_record.items():
+            #     print(p);
+            non_empty_history_record_array = list(filter(lambda x: len(x[1][1])>0, history_record.items()));
+            # min_burst_process = min(non_empty_history_record_array, key = lambda x: x[1][0]);
+            min_burst_time = min(list(map(lambda x: x[1][0], non_empty_history_record_array)));
+            min_burst_process = list(filter(lambda x: x[1][0] == min_burst_time, non_empty_history_record_array));
+            min_burst_process_earlies_time = min(list(map(lambda x: x[1][1][0].arrive_time, min_burst_process)));
+            min_burst_process = list(filter(lambda x: x[1][1][0].arrive_time == min_burst_process_earlies_time, min_burst_process))[0];
+            new_process = history_record[min_burst_process[0]][1].pop(0);
+            print("Current Times: "+str(current_time)+" New Process: " + str(new_process.id)  + " predicted_time: " + str(min_burst_process[1][0]) + " burst_time: " + str(new_process.burst_time));
+            schedule.append((current_time, new_process.id));
+            # print(new_process.id);
+            new_predict = (1-alpha) * history_record[str(new_process.id)][0] + (alpha) * new_process.burst_time;
+            print(new_predict);
+            history_record[str(new_process.id)] = [new_predict, history_record[str(new_process.id)][1]];
+            waiting_time += (current_time -  new_process.arrive_time);
+            current_time += new_process.burst_time;
+            history_record_count -= 1;
+
+    average_waiting_time = waiting_time/float(process_list_len);
+    return schedule, average_waiting_time
 
 
 def read_input():
@@ -117,22 +200,51 @@ def main(argv):
     for process in process_list:
         print (process)
     print ("simulating FCFS ----")
+
+
     FCFS_schedule, FCFS_avg_waiting_time =  FCFS_scheduling(process_list)
     write_output('FCFS.txt', FCFS_schedule, FCFS_avg_waiting_time )
     print ("simulating RR ----")
+    rr_process = [];
     time_quantum = 2;
     if len(argv) >= 1:
         time_quantum = int(argv[0]);
     print(argv);
     print("RR quantum: " + str(time_quantum))
-    RR_schedule, RR_avg_waiting_time =  RR_scheduling(process_list,time_quantum)
+    for p in process_list:
+        rr_process.append(Process(p.id, p.arrive_time, p.burst_time));
+    RR_schedule, RR_avg_waiting_time =  RR_scheduling(rr_process,time_quantum )
     write_output('RR.txt', RR_schedule, RR_avg_waiting_time )
     print ("simulating SRTF ----")
-    SRTF_schedule, SRTF_avg_waiting_time =  SRTF_scheduling(process_list)
+    srtf_process = [];
+    for p in process_list:
+        srtf_process.append(Process(p.id, p.arrive_time, p.burst_time));
+    SRTF_schedule, SRTF_avg_waiting_time =  SRTF_scheduling(srtf_process)
     write_output('SRTF.txt', SRTF_schedule, SRTF_avg_waiting_time )
     print ("simulating SJF ----")
-    SJF_schedule, SJF_avg_waiting_time =  SJF_scheduling(process_list, alpha = 0.5)
+    sjf_process = [];
+    alpha = 0.5;
+    if len(argv) >= 2:
+        alpha = float(argv[1]);
+    print("alpha: " + str(alpha));
+    for p in process_list:
+        sjf_process.append(Process(p.id, p.arrive_time, p.burst_time));
+    SJF_schedule, SJF_avg_waiting_time =  SJF_scheduling(sjf_process, alpha);
     write_output('SJF.txt', SJF_schedule, SJF_avg_waiting_time )
 
 if __name__ == '__main__':
     main(sys.argv[1:])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
