@@ -37,11 +37,55 @@ def FCFS_scheduling(process_list):
     average_waiting_time = waiting_time/float(len(process_list))
     return schedule, average_waiting_time
 
+def pop_task(scheduled_set):
+    process = scheduled_set[0];
+    if len(scheduled_set) >= 2:
+        scheduled_set = scheduled_set[1:];
+    else:
+        scheduled_set = [];
+    return [process, scheduled_set];
+
+def finish_task(process, current_time, time_quantum, scheduled_set, last_preempt_time):
+    if process.burst_time <= time_quantum:    
+        current_time += process.burst_time;   
+    else:
+        current_time += time_quantum;
+        process.burst_time -= time_quantum;
+        scheduled_set.append(process);
+    last_preempt_time[process.id] = current_time;   
+    return [current_time,  scheduled_set, last_preempt_time];
+
 #Input: process_list, time_quantum (Positive Integer)
 #Output_1 : Schedule list contains pairs of (time_stamp, proccess_id) indicating the time switching to that proccess_id
 #Output_2 : Average Waiting Time
 def RR_scheduling(process_list, time_quantum ):
-    return (["to be completed, scheduling process_list on round robin policy with time_quantum"], 0.0)
+    schedule = []
+    current_time = 0
+    waiting_time = 0
+    scheduled_set = [];
+    last_preempt_time = dict();
+    process_list_len = len(process_list);
+
+
+    while len(scheduled_set) != 0 or len(process_list) != 0:
+        #if no more task, fetch one from list
+        if len(scheduled_set) == 0:
+            current_time = process_list[0].arrive_time;
+        else:
+            [process, scheduled_set] = pop_task(scheduled_set);
+            waiting_time += current_time - last_preempt_time[process.id];
+            schedule.append((current_time, process.id));
+            [current_time, scheduled_set, last_preempt_timerent_time]=finish_task(process, current_time, time_quantum, scheduled_set, last_preempt_time);
+                # print '[%s]' % ', '.join(map(str, scheduled_set));
+        #get arrived tasks
+        if len(process_list) > 0:
+            processes = list(filter(lambda x: x.arrive_time <= current_time, process_list));
+            process_list = list(filter(lambda x: x.arrive_time > current_time, process_list));
+            scheduled_set = processes + scheduled_set;
+            for p in processes:
+                last_preempt_time[p.id] = p.arrive_time;    
+    average_waiting_time = waiting_time/float(process_list_len)
+    return schedule, average_waiting_time
 
 def SRTF_scheduling(process_list):
     return (["to be completed, scheduling process_list on SRTF, using process.burst_time to calculate the remaining time of the current process "], 0.0)
@@ -76,7 +120,12 @@ def main(argv):
     FCFS_schedule, FCFS_avg_waiting_time =  FCFS_scheduling(process_list)
     write_output('FCFS.txt', FCFS_schedule, FCFS_avg_waiting_time )
     print ("simulating RR ----")
-    RR_schedule, RR_avg_waiting_time =  RR_scheduling(process_list,time_quantum = 2)
+    time_quantum = 2;
+    if len(argv) >= 1:
+        time_quantum = int(argv[0]);
+    print(argv);
+    print("RR quantum: " + str(time_quantum))
+    RR_schedule, RR_avg_waiting_time =  RR_scheduling(process_list,time_quantum)
     write_output('RR.txt', RR_schedule, RR_avg_waiting_time )
     print ("simulating SRTF ----")
     SRTF_schedule, SRTF_avg_waiting_time =  SRTF_scheduling(process_list)
